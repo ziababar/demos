@@ -46,31 +46,20 @@ def check_filetype(fileName):
     return(fileType.split(' ', 1)[0])
 
 
-def vectorize_text(folder, filesList, myCollection):
+def vectorize_text(fileName):
 
-    corpus = ""
+    source_doc = fileName
+    print(source_doc)
 
-    for fileName in filesList:
-        fileType = check_filetype(folder+fileName)
+    f = open(fileName, "r")
+    article_text = f.read()
 
-        if fileType == "ASCII":
-
-            fileContents = ""
-            for line in open(folder+fileName, "r"):
-                fileContents += line
-            
-            corpus += fileContents
-
-    print(corpus)
-
-    corpus = nltk.sent_tokenize(corpus)
+    corpus = nltk.sent_tokenize(article_text)
 
     for i in range(len(corpus )):
-        corpus[i] = corpus[i].lower()
-        corpus[i] = re.sub(r'\W',' ',corpus [i])
-        corpus[i] = re.sub(r'\s+',' ',corpus [i])
-
-    print(corpus)
+        corpus [i] = corpus [i].lower()
+        corpus [i] = re.sub(r'\W',' ',corpus [i])
+        corpus [i] = re.sub(r'\s+',' ',corpus [i])
 
     wordfreq = {}
     for sentence in corpus:
@@ -115,13 +104,11 @@ def vectorize_text(folder, filesList, myCollection):
     tf_idf_model = np.asarray(tfidf_values)
 
     tf_idf_model = np.transpose(tf_idf_model)
-    print(tf_idf_model)
+    tf_idf_model_string = tf_idf_model.tolist()
 
-    for tf_idf_value in tf_idf_model:
-        fileRecord = { "fileType": "TEXT", "fileCrc": "0xffff", "fileSize": "0", "fileName": "NULL", "fileData": tf_idf_value.tolist() }
-        x = myCollection.insert_one(fileRecord)
+    fileRecord = { "fileType": "TEXT", "fileCrc": crc32(fileName), "fileSize": os.stat(fileName).st_size, "fileName": fileName, "fileData": tf_idf_model_string }
 
-    return
+    return fileRecord
 
 
 
@@ -152,11 +139,12 @@ if __name__ == '__main__':
     mydb = myclient["torontodb"]
     myCollection = mydb["fileList"]
 
+
     print(myclient.list_database_names())
-    myCollection.delete_many({})
 
     folder = ""
     filesList = []
+    oldFilesList = []
     
     # Remove 1st argument from the
     # list of command line arguments
@@ -191,14 +179,29 @@ if __name__ == '__main__':
     i = 1
     while True:
 
-        filesList = [f for f in listdir(folder) if isfile(join(folder, f))]
+        files = [f for f in listdir(folder) if isfile(join(folder, f))]
+        filesList = Diff(files, oldFilesList)
         print("List of files are ", filesList)
 
-        vectorize_text(folder, filesList, myCollection)
-        
+        for fileName in filesList:
+            fileRecord = ""
+            fileType = check_filetype(folder+fileName)
+
+            if fileType == "ASCII":
+                fileRecord = vectorize_text(folder+fileName)
+                x = myCollection.insert_one(fileRecord)
+                print(fileRecord)
+            elif fileType == "JPEG":
+                print("File type: JPEG")
+                vectorize_image(folder+fileName)
+            else:
+                print("Unknown file type, skipping...")
+
+        oldFilesList = filesList
+
         i += 1
 
-        if i > 1:
+        if i > 2:
             sys.exit(2)
 
         time.sleep(10)
